@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FITROOM 3D</title>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js"></script>
+
+<style>
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: #101010;
+  color: white;
+  font-family: Arial, sans-serif;
+}
+
+header {
+  padding: 18px;
+  display: flex;
+  justify-content: space-between;
+  border-bottom: 1px solid #333;
+}
+
+.logo {
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 2px;
+}
+
+.logo span {
+  color: #ff791c;
+}
+
+main {
+  max-width: 1000px;
+  margin: auto;
+  padding: 15px;
+}
+
+.stage {
+  width: 100%;
+  height: 65vh;
+  min-height: 400px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 15px;
+  background: #222;
+}
+
+video,
+#threeCanvas {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  top: 0;
+  left: 0;
+}
+
+video {
+  transform: scaleX(-1);
+}
+
+#threeCanvas {
+  pointer-events: none;
+}
+
+.hint {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  right: 12px;
+  padding: 10px;
+  background: #0009;
+  border-radius: 8px;
+  font-size: 12px;
+  z-index: 2;
+}
+
+.buttons {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+button,
+.upload {
+  border: none;
+  padding: 13px;
+  border-radius: 9px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+button {
+  background: #ff791c;
+  color: black;
+  flex: 1;
+}
+
+.secondary {
+  background: #333;
+  color: white;
+}
+
+.panel {
+  background: #1b1b1b;
+  padding: 17px;
+  border-radius: 13px;
+  margin-top: 15px;
+}
+
+h2 {
+  font-size: 17px;
+}
+
+.tabs {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
+  margin: 15px 0;
+}
+
+.tab {
+  background: #333;
+  color: white;
+  font-size: 11px;
+}
+
+.tab.active {
+  background: #ff791c;
+  color: black;
+}
+
+.upload {
+  display: block;
+  text-align: center;
+  background: white;
+  color: black;
+  margin-top: 10px;
+}
+
+input[type=file] {
+  display: none;
+}
+
+input[type=range] {
+  width: 100%;
+  accent-color: #ff791c;
+}
+
+label {
+  font-size: 13px;
+}
+
+.info {
+  color: #aaa;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+#photoPreview img {
+  width: 100px;
+  margin-top: 10px;
+  border-radius: 8px;
+}
+
+@media(max-width:600px) {
+  .stage {
+    height: 60vh;
+  }
+}
+</style>
+</head>
+
+<body>
+
+<header>
+  <div class="logo">FITROOM<span>3D</span></div>
+  <small id="status">READY</small>
+</header>
+
+<main>
+
+  <div class="stage" id="stage">
+
+    <video id="video" autoplay muted playsinline></video>
+
+    <canvas id="threeCanvas"></canvas>
+
+    <div class="hint" id="hint">
+      Aktifkan kamera untuk memulai virtual try-on.
+    </div>
+
+  </div>
+
+  <div class="buttons">
+    <button onclick="startCamera()">AKTIFKAN KAMERA</button>
+    <button class="secondary" onclick="switchCamera()">GANTI KAMERA</button>
+  </div>
+
+  <div class="buttons">
+    <button class="secondary" onclick="stopCamera()">MATIKAN KAMERA</button>
+    <button onclick="takePhoto()">AMBIL FOTO</button>
+  </div>
+
+  <section class="panel">
+
+    <h2>MY OUTFIT</h2>
+
+    <div class="tabs">
+      <button class="tab active" onclick="selectCategory('top',this)">ATASAN</button>
+      <button class="tab" onclick="selectCategory('bottom',this)">CELANA</button>
+      <button class="tab" onclick="selectCategory('shoes',this)">SEPATU</button>
+      <button class="tab" onclick="selectCategory('accessory',this)">AKSESORI</button>
+    </div>
+
+    <label class="upload">
+      + PILIH MODEL 3D GLB/GLTF
+      <input type="file" id="modelFile" accept=".glb,.gltf">
+    </label>
+
+    <p id="modelName" class="info">
+      Belum ada model 3D.
+    </p>
+
+    <h2>FOTO PRODUK</h2>
+
+    <label class="upload">
+      + PILIH FOTO DARI GALERI
+      <input type="file" id="photoFile" accept="image/*">
+    </label>
+
+    <div id="photoPreview"></div>
+
+    <h2>PENGATURAN MODEL</h2>
+
+    <label>Ukuran model</label>
+    <input id="scale" type="range" min="0.5" max="2" step="0.01" value="1">
+
+    <br><br>
+
+    <label>Posisi vertikal</label>
+    <input id="height" type="range" min="-1" max="1" step="0.01" value="0">
+
+    <br><br>
+
+    <label>Jarak model</label>
+    <input id="depth" type="range" min="-1" max="1" step="0.01" value="0">
+
+    <p class="info">
+      FITROOM menggunakan deteksi tubuh dan rendering 3D.
+      Model pakaian harus berformat GLB atau GLTF.
+      Foto produk biasa belum otomatis menjadi pakaian 3D.
+    </p>
+
+  </section>
+
+</main>
+
+<script type="module">
+
+import * as THREE from "three";
+import { GLTFLoader } from "three/addons/loaders/GLTFLoader.js";
+
+const video = document.getElementById("video");
+const canvas = document.getElementById("threeCanvas");
+const stage = document.getElementById("stage");
+
+let stream = null;
+let facing = "user";
+let pose = null;
+let landmarks = null;
+let currentCategory = "top";
+let models = {};
+let currentModel = null;
+
+let settings = {
+  scale: 1,
+  height: 0,
+  depth: 0
+};
+
+// THREE.JS
+
+const scene = new THREE.Scene();
+
+const camera = new THREE.PerspectiveCamera(
+  45,
+  stage.clientWidth / stage.clientHeight,
+  0.1,
+  100
+);
+
+camera.position.z = 5;
+
+const renderer = new THREE.WebGLRenderer({
+  canvas,
+  alpha: true,
+  antialias: true
+});
+
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 1.5));
+renderer.setSize(stage.clientWidth, stage.clientHeight);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x777777, 2));
+
+const light = new THREE.DirectionalLight(0xffffff, 2);
+light.position.set(2, 4, 5);
+scene.add(light);
+
+const group = new THREE.Group();
+scene.add(group);
+
+const loader = new GLTFLoader();
+
+function resize() {
+  const w = stage.clientWidth;
+  const h = stage.clientHeight;
+
+  renderer.setSize(w, h, false);
+
+  camera.aspect = w / h;
+  camera.updateProjectionMatrix();
+}
+
+window.addEventListener("resize", resize);
+
+// CAMERA
+
+window.startCamera = async function() {
+
+  try {
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      throw new Error("Kamera tidak tersedia. Gunakan HTTPS.");
+    }
+
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+    }
+
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: {
+        facingMode: facing,
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    });
+
+    video.srcObject = stream;
+    video.style.transform =
+      facing === "user" ? "scaleX(-1)" : "none";
+
+    await video.play();
+
+    document.getElementById("status").textContent =
+      "CAMERA ACTIVE";
+
+    document.getElementById("hint").textContent =
+      "Berdiri beberapa meter dari kamera agar tubuh terlihat.";
+
+    detectPose();
+
+  } catch(error) {
+
+    alert("Kamera gagal dibuka: " + error.message);
+
+  }
+
+};
+
+window.stopCamera = function() {
+
+  if (stream) {
+    stream.getTracks().forEach(track => track.stop());
+  }
+
+  stream = null;
+  video.srcObject = null;
+
+  document.getElementById("status").textContent =
+    "CAMERA OFF";
+
+};
+
+window.switchCamera = async function() {
+
+  facing = facing === "user" ? "environment" : "user";
+
+  await startCamera();
+
+};
+
+// MEDIAPIPE POSE
+
+pose = new window.Pose({
+  locateFile: file =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+});
+
+pose.setOptions({
+  modelComplexity: 1,
+  smoothLandmarks: true,
+  enableSegmentation: true,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5
+});
+
+pose.onResults(results => {
+
+  landmarks = results.poseLandmarks || null;
+
+  if (landmarks) {
+    document.getElementById("hint").textContent =
+      "Tubuh terdeteksi.";
+  }
+
+});
+
+let detecting = false;
+
+async function detectPose() {
+
+  if (!stream) return;
+
+  if (!detecting && video.readyState >= 2) {
+
+    detecting = true;
+
+    try {
+      await pose.send({ image: video });
+    } catch(error) {
+      console.log(error);
+    }
+
+    detecting = false;
+
+  }
+
+  if (stream) {
+    requestAnimationFrame(detectPose);
+  }
+
+}
+
+// LOAD MODEL 3D
+
+document.getElementById("modelFile").onchange = function(event) {
+
+  const file = event.target.files[0];
+
+  if (!file) return;
+
+  const url = URL.createObjectURL(file);
+
+  loader.load(url, gltf => {
+
+    const model = gltf.scene;
+
+    const box = new THREE.Box3().setFromObject(model);
+    const size = box.getSize(new THREE.Vector3());
+    const center = box.getCenter(new THREE.Vector3());
+
+    model.position.sub(center);
+
+    const maxSize = Math.max(size.x, size.y, size.z);
+
+    model.scale.setScalar(2 / (maxSize || 1));
+
+    models[currentCategory] = model;
+
+    showModel();
+
+    document.getElementById("modelName").textContent =
+      file.name;
+
+    document.getElementById("status").textContent =
+      "3D MODEL LOADED";
+
+  }, undefined, error => {
+
+    alert("Model gagal dimuat. Pastikan file GLB/GLTF valid.");
+
+    console.error(error);
+
+  });
+
+};
+
+function showModel() {
+
+  while (group.children.length) {
+    group.remove(group.children[0]);
+  }
+
+  currentModel = models[currentCategory] || null;
+
+  if (currentModel) {
+    group.add(currentModel);
+  }
+
+}
+
+window.selectCategory = function(category, button) {
+
+  currentCategory = category;
+
+  document.querySelectorAll(".tab").forEach(tab => {
+    tab.classList.remove("active");
+  });
+
+  button.classList.add("active");
+
+  showModel();
+
+  document.getElementById("modelName").textContent =
+    models[category] ? "Model tersedia" : "Belum ada model 3D.";
+
+};
+
+// FOTO PRODUK
+
+document.getElementById("photoFile").onchange = function(event) {
+
+  const file = event.target.files[0];
+
+  if (!file) return;
+
+  const url = URL.createObjectURL(file);
+
+  document.getElementById("photoPreview").innerHTML =
+    `<img src="${url}" alt="Foto produk">`;
+
+};
+
+// SLIDER
+
+document.getElementById("scale").oninput = e => {
+  settings.scale = Number(e.target.value);
+};
+
+document.getElementById("height").oninput = e => {
+  settings.height = Number(e.target.value);
+};
+
+document.getElementById("depth").oninput = e => {
+  settings.depth = Number(e.target.value);
+};
+
+// TRACKING MODEL
+
+function animate() {
+
+  requestAnimationFrame(animate);
+
+  if (landmarks && currentModel) {
+
+    const leftShoulder = landmarks[11];
+    const rightShoulder = landmarks[12];
+
+    const leftHip = landmarks[23];
+    const rightHip = landmarks[24];
+
+    const shoulderX =
+      (leftShoulder.x + rightShoulder.x) / 2;
+
+    const shoulderY =
+      (leftShoulder.y + rightShoulder.y) / 2;
+
+    const hipY =
+      (leftHip.y + rightHip.y) / 2;
+
+    const shoulderWidth =
+      Math.hypot(
+        leftShoulder.x - rightShoulder.x,
+        leftShoulder.y - rightShoulder.y
+      );
+
+    const width = Math.max(shoulderWidth * 5, 0.3);
+
+    const x = (0.5 - shoulderX) * 4.5;
+
+    const y = (0.5 - (shoulderY + hipY) / 2) * 5;
+
+    group.position.set(
+      x,
+      y + settings.height,
+      settings.depth
+    );
+
+    group.scale.set(
+      width * settings.scale,
+      width * settings.scale,
+      width * settings.scale
+    );
+
+    group.rotation.z = Math.atan2(
+      rightShoulder.y - leftShoulder.y,
+      rightShoulder.x - leftShoulder.x
+    );
+
+  }
+
+  renderer.render(scene, camera);
+
+}
+
+animate();
+
+// CAPTURE
+
+window.takePhoto = function() {
+
+  const output = document.createElement("canvas");
+
+  output.width = video.videoWidth || 720;
+  output.height = video.videoHeight || 1280;
+
+  const ctx = output.getContext("2d");
+
+  if (video.videoWidth) {
+
+    if (facing === "user") {
+      ctx.translate(output.width, 0);
+      ctx.scale(-1, 1);
+    }
+
+    ctx.drawImage(
+      video,
+      0,
+      0,
+      output.width,
+      output.height
+    );
+
+  }
+
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+
+  ctx.drawImage(
+    canvas,
+    0,
+    0,
+    output.width,
+    output.height
+  );
+
+  const link = document.createElement("a");
+
+  link.download = "FITROOM-3D.png";
+  link.href = output.toDataURL("image/png");
+
+  link.click();
+
+};
+
+</script>
+
+</body>
+</html>
